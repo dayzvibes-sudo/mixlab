@@ -72,6 +72,7 @@ details summary{cursor:pointer;color:var(--ac);font-size:12px;letter-spacing:1.2
 #dz.sm{padding:14px}#dz.sm span{display:none}
 .wide{grid-column:1/-1}.tb{display:flex;gap:14px;flex-wrap:wrap}.tgl{display:flex;flex-direction:column;gap:2px;min-width:180px}.tgl button{text-align:left;border:0;background:none;color:var(--mu);padding:7px 10px;border-radius:4px}.tgl button:hover{color:var(--tx)}.tgl button.on{background:#1b3a52;color:var(--tx)}.tbc{flex:1;min-width:300px}
 .hl{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}.hl span{border:1px solid var(--bd);border-left:3px solid var(--ok);background:#0f141b;border-radius:4px;padding:5px 10px;font-size:12px}.hl .wa{border-left-color:var(--wa)}.hl .bad{border-left-color:var(--bad)}.hl b{font-weight:600}
+#dz{position:relative}#dz input{position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:0}
 </style>
 </head>
 <body>
@@ -79,8 +80,7 @@ details summary{cursor:pointer;color:var(--ac);font-size:12px;letter-spacing:1.2
 <main>
 <section class="pn" id="up">
 <h2>Entrada de sinal</h2>
-<div id="dz" tabindex="0"><b>Arrasta um ficheiro de áudio ou clica para selecionar</b><span class="m">WAV · MP3 · FLAC · OGG · AAC/M4A — nenhum dado sai do teu dispositivo</span></div>
-<input id="fi" type="file" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a,.aac" hidden>
+<div id="dz"><b>Arrasta um ficheiro de áudio ou clica para selecionar</b><span class="m">WAV · MP3 · FLAC · OGG · AAC/M4A — nenhum dado sai do teu dispositivo</span><input id="fi" type="file" accept="audio/*,.wav,.mp3,.flac,.ogg,.oga,.opus,.m4a,.aac,.aif,.aiff" aria-label="Selecionar ficheiro de áudio"></div>
 <div id="pg"><h2 style="margin-top:16px">Pipeline de análise</h2><div class="bar"><i id="pb"></i></div><div id="sl"></div></div>
 <div id="err" role="alert"></div>
 </section>
@@ -89,6 +89,7 @@ details summary{cursor:pointer;color:var(--ac);font-size:12px;letter-spacing:1.2
 </main>
 <script>
 "use strict";
+window.addEventListener("error",e=>{const b=document.getElementById("err");if(b){b.style.display="block";b.textContent="Erro no site: "+(e.message||"desconhecido")+(e.lineno?" (linha "+e.lineno+")":"")}});
 const $=s=>document.querySelector(s);
 const F=(x,d=1,u="")=>{if(!Number.isFinite(x))return"—";let s=x.toFixed(d);if(+s===0)s=(0).toFixed(d);return s.replace(".",",")+u};
 const tick=()=>new Promise(r=>setTimeout(r,30));
@@ -189,7 +190,4 @@ async function analyse(file){
   for(let j=0;j<blk.length;j++){const l=lk(blk[j]);if(l>-70){const q=Math.min(800,Math.floor((l+70)*10));hb[q]+=blk[j];hc[q]++}let sa=0,ca=0;for(let q=0;q<=800;q++){sa+=hb[q];ca+=hc[q]}if(ca){const th2=lk(sa/ca)-10;let s2x=0,c2=0;for(let q=Math.max(0,Math.floor((th2+70)*10));q<=800;q++){s2x+=hb[q];c2+=hc[q]}run[j]=c2?lk(s2x/c2):NaN}else run[j]=NaN}
   const WC=600,wf=new Float32Array(WC);for(let c=0;c<WC;c++){const a=Math.floor(c*N/WC),z=Math.floor((c+1)*N/WC),sp2=Math.max(1,Math.floor((z-a)/200));let m=0;for(let i=a;i<z;i+=sp2)for(const ch of chs){const v=Math.abs(ch[i]);if(v>m)m=v}wf[c]=m}
   setStep(5);await tick();
-  const hp=512,nf=Math.min(Math.floor(N/hp),24000),ev=new Float64Array(nf);let pv=0;
-  for(let f=0;f<nf;f++){let e=0;for(let i=f*hp;i<(f+1)*hp;i++){const v=mid(i);e+=v*v}e=Math.log(1+1e4*e/hp);ev[f]=Math.max(0,e-pv);pv=e}
-  const em=avg(Array.from(ev)),fps=fs/hp;let r0=0;for(let i=0;i<nf;i++){ev[i]-=em;r0+=ev[i]*ev[i]}
-  let bpm0=NaN,bstr=0;if(r0>0)for(let l=Math.max(2,Math.round(fps*60/
+  const hp=512,nf
