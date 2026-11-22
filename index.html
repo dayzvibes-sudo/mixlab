@@ -70,6 +70,8 @@ canvas{width:100%;display:block;background:#0b0f14;border:1px solid var(--bd);bo
 .wr{display:flex;gap:5px;align-items:flex-end;height:86px}.wb{flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;text-align:center}.wb i{display:block;background:var(--ac);border-radius:2px 2px 0 0;min-height:2px}.wb small{font-size:9px;color:var(--mu)}
 details summary{cursor:pointer;color:var(--ac);font-size:12px;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:4px}details[open] summary{margin-bottom:12px}
 #dz.sm{padding:14px}#dz.sm span{display:none}
+.wide{grid-column:1/-1}.tb{display:flex;gap:14px;flex-wrap:wrap}.tgl{display:flex;flex-direction:column;gap:2px;min-width:180px}.tgl button{text-align:left;border:0;background:none;color:var(--mu);padding:7px 10px;border-radius:4px}.tgl button:hover{color:var(--tx)}.tgl button.on{background:#1b3a52;color:var(--tx)}.tbc{flex:1;min-width:300px}
+.hl{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}.hl span{border:1px solid var(--bd);border-left:3px solid var(--ok);background:#0f141b;border-radius:4px;padding:5px 10px;font-size:12px}.hl .wa{border-left-color:var(--wa)}.hl .bad{border-left-color:var(--bad)}.hl b{font-weight:600}
 </style>
 </head>
 <body>
@@ -111,13 +113,31 @@ const mx=a=>a.reduce((m,v)=>v>m?v:m,-Infinity);
 function setStep(i){$("#pb").style.width=(i/STEPS.length*100)+"%";$("#sl").innerHTML=STEPS.map((s,k)=>`<div class="st m ${k<i?"d":k==i?"c":""}">${s}</div>`).join("")}
 function fail(m){$("#err").style.display="block";$("#err").textContent="Falha na análise: "+m;$("#pg").style.display="none"}
 
+function probe(ab,name){const n=ab.byteLength,v=new DataView(ab),u=new Uint8Array(ab),s=(o,l)=>{let r="";for(let i=o;i<Math.min(n,o+l);i++)r+=String.fromCharCode(u[i]);return r},o={ext:name.includes(".")?name.split(".").pop():""};
+ try{
+  if(s(0,4)==="RIFF"&&s(8,4)==="WAVE"){o.fmt="WAV";for(let p=12;p+24<=n;){const id=s(p,4),sz=v.getUint32(p+4,true);if(id==="fmt "){const tg=v.getUint16(p+8,true);o.ch=v.getUint16(p+10,true);o.sr=v.getUint32(p+12,true);o.bits=v.getUint16(p+22,true);o.codec=tg===3?"PCM float":tg===1?"PCM":"";break}p+=8+sz+(sz&1)}}
+  else if(s(0,4)==="fLaC"){o.fmt="FLAC";const x=v.getUint32(18,false);o.sr=x>>>12;o.ch=((x>>>9)&7)+1;o.bits=((x>>>4)&31)+1}
+  else if(s(0,4)==="OggS"){o.fmt="OGG";const q=27+u[26];if(s(q+1,6)==="vorbis"){o.codec="Vorbis";o.ch=u[q+11];o.sr=v.getUint32(q+12,true)}else if(s(q,8)==="OpusHead"){o.codec="Opus";o.ch=u[q+9];o.orig=v.getUint32(q+12,true);o.sr=48000}}
+  else if(s(0,4)==="FORM"&&/AIF[FC]/.test(s(8,4))){o.fmt="AIFF";for(let p=12;p+8<=n;){const id=s(p,4),sz=v.getUint32(p+4,false);if(id==="COMM"){o.ch=v.getUint16(p+8,false);o.bits=v.getUint16(p+14,false);const e=v.getUint16(p+16,false)&32767,m=v.getUint32(p+18,false)*4294967296+v.getUint32(p+22,false);o.sr=Math.round(m*Math.pow(2,e-16383-63));break}p+=8+sz+(sz&1)}}
+  else if(s(4,4)==="ftyp"){o.fmt="M4A/MP4";for(let i=0;i<n-32;i++){if(u[i]===109&&u[i+1]===112&&u[i+2]===52&&u[i+3]===97){o.codec="AAC";o.ch=v.getUint16(i+20,false);o.sr=v.getUint16(i+28,false);break}}}
+  else{let p=0;if(s(0,3)==="ID3")p=10+(((u[6]&127)<<21)|((u[7]&127)<<14)|((u[8]&127)<<7)|(u[9]&127));
+   for(let i=p,l=Math.min(n-4,p+131072);i<l;i++){if(u[i]!==255||(u[i+1]&224)!==224)continue;const b1=u[i+1],b2=u[i+2];
+    if((b1&246)===240){const ai=(b2>>2)&15,T=[96000,88200,64000,48000,44100,32000,24000,22050,16000,12000,11025,8000];if(ai<12){o.fmt="AAC";o.codec="AAC (ADTS)";o.sr=T[ai];o.ch=((b2&1)<<2)|(u[i+3]>>6);break}continue}
+    const ver=(b1>>3)&3,lay=(b1>>1)&3,si=(b2>>2)&3;if(ver===1||lay===0||si===3||(b2>>4)===15)continue;
+    o.fmt=lay===1?"MP3":lay===2?"MP2":"MP1";o.sr=[[11025,12000,8000],[],[22050,24000,16000],[44100,48000,32000]][ver][si];o.ch=((u[i+3]>>6)&3)===3?1:2;break}}
+ }catch(e){}
+ if(o.sr&&(o.sr<3000||o.sr>768000))delete o.sr;return o}
+function fileInfo(M){const s=M.src||{},f=s.fmt||(s.ext||"").toUpperCase()||"Áudio",lossy=/MP[123]|AAC|OGG|M4A/.test(f),k=M.size*8/M.dur/1000,ext=(s.ext||"").toLowerCase(),
+ ok={WAV:"wav,wave,bwf",FLAC:"flac",MP3:"mp3",MP2:"mp2,mp3",MP1:"mp1,mp3",AAC:"aac,adts","M4A/MP4":"m4a,mp4,m4b,aac",OGG:"ogg,oga,opus,spx",AIFF:"aif,aiff,aifc"},
+ p=[f+(s.codec&&s.codec!==f?" · "+s.codec:""),M.fs+" Hz"+(s.sr&&s.sr!==M.fs?` (ficheiro: ${s.sr} Hz)`:s.orig&&s.orig!==M.fs?` (origem: ${s.orig} Hz)`:""),s.bits?s.bits+" bit":"",lossy&&Number.isFinite(k)?"≈ "+Math.round(k)+" kbps":"",M.nc===1?"mono":M.nc===2?"estéreo":M.nc+" canais (2 analisados)",F(M.dur,1)+" s"].filter(Boolean);
+ return p.join(" · ")+(s.fmt&&ok[s.fmt]&&ext&&!ok[s.fmt].split(",").includes(ext)?` · atenção: extensão .${ext} mas o conteúdo é ${s.fmt}`:"")}
 async function analyse(file){
  stopP();$("#err").style.display="none";$("#rp").style.display="none";$("#pg").style.display="block";setStep(0);await tick();
  try{
   if(!file||!file.size)throw new Error("ficheiro vazio.");
   const AC=window.AudioContext||window.webkitAudioContext;if(!AC)throw new Error("Web Audio API indisponível neste browser.");
-  const ctx=new AC();let buf;
-  try{buf=await ctx.decodeAudioData(await file.arrayBuffer())}catch(e){throw new Error("não foi possível descodificar (formato não suportado ou ficheiro corrompido).")}finally{try{ctx.close()}catch(e){}}
+  const ab=await file.arrayBuffer(),info=probe(ab,file.name);let ctx;try{ctx=info.sr?new AC({sampleRate:info.sr}):new AC()}catch(e){ctx=new AC()}let buf;
+  try{buf=await ctx.decodeAudioData(ab)}catch(e){throw new Error("não foi possível descodificar (formato não suportado ou ficheiro corrompido).")}finally{try{ctx.close()}catch(e){}}
   const fs=buf.sampleRate,N=buf.length,nc=buf.numberOfChannels;
   if(N<fs)throw new Error("áudio demasiado curto (mínimo 1 segundo).");
   const L=buf.getChannelData(0),R=nc>1?buf.getChannelData(1):null,chs=R?[L,R]:[L];
@@ -172,181 +192,4 @@ async function analyse(file){
   const hp=512,nf=Math.min(Math.floor(N/hp),24000),ev=new Float64Array(nf);let pv=0;
   for(let f=0;f<nf;f++){let e=0;for(let i=f*hp;i<(f+1)*hp;i++){const v=mid(i);e+=v*v}e=Math.log(1+1e4*e/hp);ev[f]=Math.max(0,e-pv);pv=e}
   const em=avg(Array.from(ev)),fps=fs/hp;let r0=0;for(let i=0;i<nf;i++){ev[i]-=em;r0+=ev[i]*ev[i]}
-  let bpm0=NaN,bstr=0;if(r0>0)for(let l=Math.max(2,Math.round(fps*60/190)),z=Math.round(fps);l<=z&&l<nf/2;l++){let r=0;for(let i=0;i+l<nf;i++)r+=ev[i]*ev[i+l];r/=r0;if(r>bstr){bstr=r;bpm0=60*fps/l}}
-  let bpm=bpm0;while(bpm<70)bpm*=2;while(bpm>160)bpm/=2;
-  const ts=OC.reduce((a,x)=>a+(x.s>0?x.s:0),0),sh=(a,z)=>OC.slice(a,z+1).reduce((x,o)=>x+(o.s>0?o.s:0),0)/ts,lowSh=sh(0,2),hmSh=sh(6,7),bb=(c,w)=>c?w:0;
-  const sc=[.3+bb(crest>8&&crest<14,.15)+bb(lufs>-14&&lufs<-7,.1),
-   bb(bpm0>=118&&bpm0<=150,.4)+bb(bstr>.3,.15)+bb(crest<9.5,.15)+bb(lowSh>.55,.15)+bb(lufs>-9,.1),
-   bb(bpm0>=60&&bpm0<=105,.35)+bb(lowSh>.62,.3)+bb(!!R&&width<25,.1)+bb(hmSh<.12,.1),
-   bb(cent>1800,.3)+bb(hmSh>.14,.25)+bb(lowSh<.5,.2)+bb(width>12,.1)+bb(bpm>=90&&bpm<=180,.05),
-   bb(crest>13,.35)+bb(lufs<-15,.25)+bb(LR[0]>7,.2)+bb(lowSh<.45,.15)+bb(bstr<.25,.1)];
-  let gi=0;sc.forEach((v,i)=>{if(v>sc[gi])gi=i});const s2=Math.max(...sc.filter((v,i)=>i!=gi)),conf=Math.round(Math.max(35,Math.min(95,50+(sc[gi]-s2)*100)));
-  REP={name:file.name,dur:N/fs,fs,nc,lufs,tp:dB(tp),sp:dB(sp),crest,plr:dB(tp)-lufs,corr,neg,bc,worst,width,bal,mono,cent,near:near/tot*100,clip,mom,stl,momMax:mx(mom),stMax:mx(stl),lra:LR[0],lraLo:LR[1],lraHi:LR[2],psr:dB(tp)-mx(stl),oc:OC,th,gi,conf,bpm,bstr,run,tpb,wf,ws,vc,vf,buf,runs};
-  GI=-1;TAB=0;setStep(6);await tick();render();
- }catch(e){fail(e&&e.message?e.message:"erro desconhecido.")}
-}
-
-const OF=[31.5,63,125,250,500,1000,2000,4000,8000,16000],TOL=[5,4,3.5,3,3,3,3,3.5,4.5,5.5],BASE=[-1,5,7,5,2.5,0,-3,-6.5,-9,-15];
-const GN=[["Pop / Mainstream",[0,0,0,0,0,0,0,0,0,0]],["Eletrónica / EDM",[3,3,1,-1,-1.5,-.5,0,1,2,2.5]],["Hip-Hop / Trap",[5,5,2,-1,-2,-1,0,0,-1,-2]],["Rock / Metal",[-5,-3,-1,0,.5,1,2.5,2.5,1,-1]],["Acústico / Jazz / Clássica",[-9,-5,-2,0,1,1.5,1,1,1,0]]];
-const GR=[["Graves","31–125 Hz",0,2],["Low-mids","250 Hz–1 kHz",3,5],["High-mids","2–4 kHz",6,7],["Agudos","8–16 kHz",8,9]];
-const fq=i=>OF[i]>=1000?OF[i]/1000+" kHz":String(OF[i]).replace(".",",")+" Hz";
-const fl=(s,V)=>s.replace(/\{(\w+)\}/g,(_,k)=>V[k]);
-function tonal(M,gi){const v=M.oc.map(o=>Number.isFinite(o.n)),t0=BASE.map((x,i)=>x+GN[gi][1][i]),ts=pdb(t0.slice(3,8).reduce((a,x)=>a+Math.pow(10,x/10),0)),tg=t0.map(x=>x-ts),d=M.oc.map((o,i)=>v[i]?o.n-tg[i]:NaN);
- const gr=GR.map(([n,r,a,z])=>{const ix=[];for(let i=a;i<=z;i++)if(v[i])ix.push(i);if(!ix.length)return{n,r,d:NaN,w:a,tl:3,s:"ok"};const m=avg(ix.map(i=>d[i])),w=ix.reduce((p,i)=>Math.abs(d[i])>Math.abs(d[p])?i:p,ix[0]),tl=avg(ix.map(i=>TOL[i]));return{n,r,d:m,w,tl,s:Math.abs(m)>tl*1.8?"bad":Math.abs(m)>tl?"wa":"ok"}});
- return{tg,d,gr}}
-const GRC=[["Graves {d} dB acima do alvo de {g} (pior nos {f}). High-pass perto de 25–30 Hz, EQ dinâmico ou compressão multibanda nos 60–120 Hz e sidechain do baixo ao kick para libertar headroom ao limiter.","Graves {d} dB abaixo do alvo de {g} (pior nos {f}). Verifica high-passes excessivos, reforça a fundamental do kick/baixo com EQ largo em 60–100 Hz e confirma a fase entre kick e baixo."],
-["Low-mids {d} dB acima do alvo (pior nos {f}). Cortes estreitos de 2–4 dB entre 200 e 500 Hz nos elementos sobrepostos (guitarras, sintes, vozes) e EQ dinâmico no bus de instrumentos.","Low-mids {d} dB abaixo do alvo (pior nos {f}): mix com pouco corpo. Evita smile curves exageradas e reforça 250–500 Hz nos elementos de suporte."],
-["High-mids {d} dB acima do alvo (pior nos {f}): risco de aspereza e fadiga auditiva. EQ dinâmico ou de-esser nos 2–5 kHz e rever saturação em vozes e guitarras.","High-mids {d} dB abaixo do alvo (pior nos {f}): voz e transientes encobertos. Bell largo em 2–4 kHz e verifica máscara com guitarras e sintes."],
-["Agudos {d} dB acima do alvo (pior nos {f}): possível fizz, sibilância ou saturação de exciter. Reduz o shelf acima de 8 kHz e usa de-esser.","Agudos {d} dB abaixo do alvo (pior nos {f}): falta de ar. Shelf suave a partir de 8–10 kHz, saturação nas fontes e verifica low-pass do master/codec."]];
-const GRO=[["Graves {d} dB acima do alvo de {g}, pior nos {f}. Mandaste um terramoto para o master bus sem controlo, o limiter come a energia do sub e o resto da mix leva por tabela. High-pass, caralho.","Graves {d} dB abaixo do alvo de {g} (pior nos {f}). Isto não tem fundo, é uma mix em formato chapa de zinco: o bombo é um estalinho e o baixo é decorativo."],
-["Low-mids {d} dB acima do alvo, pior nos {f}: é mud do bom, guitarras, sintes e baixo a acampar nos 300 Hz como num festival. Soa a gravado dentro de um armário embutido, e a culpa é tua.","Low-mids {d} dB abaixo do alvo: mix oca e sem corpo, parece que desenhaste uma smile curve com o pé esquerdo sem fazer ideia do que se passa nos 250–1k."],
-["High-mids {d} dB acima do alvo, pior nos {f}: estás a serrar o canal auditivo do ouvinte com ressonância de 3 kHz e chamas-lhe 'presença'. Isto corta vidro, merda.","High-mids {d} dB abaixo do alvo: voz e snare enterradas em lama, zero inteligibilidade. Parece que a música foi gravada atrás de uma porta, foda-se."],
-["Agudos {d} dB acima do alvo (pior nos {f}): fizz, sibilância e saturação digital de supermercado. Aquilo não é ar, é ruído de um exciter que nunca devias ter ligado.","Agudos {d} dB abaixo do alvo: falta de ar, parece que passaste o master por um low-pass de 8 kHz por pura maldade. Cada hi-hat soa a um pau a bater num colchão."]];
-
-function recs(M,gi){const T=tonal(M,gi),o=[],a=(s,t,x)=>o.push({s,t,x}),g=GN[gi][0];
- a("ok","Género de referência: "+g,`${GI<0?`Detetado automaticamente (${M.conf}% de confiança, ≈${F(M.bpm,0)} BPM).`:"Escolhido manualmente."} Se estiver errado, muda-o no seletor.`);
- const isp=M.tp-M.sp,Ls=loud(M,gi),gl=GL[gi],vp=vpr(T),wb=avg(M.ws.slice(0,3).filter(Number.isFinite));
- if(M.runs>=10)a("bad","Clipping digital",`${M.runs} sequências de 3 ou mais amostras seguidas a 0 dBFS (topos achatados). Reduz o ganho antes do limiter e confirma que nada (clipper, saturador) vem depois dele.`);else if(M.clip>0)a("ok","Picos no teto",`${M.clip} amostras a 0 dBFS, mas sem topos achatados: normal num limiter com ceiling em 0 dBFS.`);
- if(M.tp>0)a("bad","True peak acima de 0 dBTP",`True peak ${F(M.tp,2)} dBTP: a onda reconstruída passa os 0 dBFS e pode clipar no conversor ou no encode lossy. Liga o modo true-peak/oversampling no limiter e baixa o ceiling.`);
- else if(M.tp>-1){const cut=M.tp+1,nc=M.sp-cut;a(M.tp>-.3?"wa":"ok",M.tp>-.3?"Pouca margem de true peak":"True peak ligeiramente acima de −1 dBTP",`Sample peak ${F(M.sp,2)} dBFS e true peak ${F(M.tp,2)} dBTP (overshoot entre amostras: ${F(isp,2)} dB). Um ceiling em modo sample-peak só trava as amostras; a onda reconstruída entre elas pode passar. Para o true peak ficar em −1,0 dBTP tens de o baixar ${F(cut,2)} dB: novo ceiling ≈ ${F(nc,2)} dBFS (assumindo o mesmo overshoot), o que custa cerca de ${F(cut,2)} dB de loudness. Alternativa: liga o modo true-peak no limiter.`)}
- else a("ok","True peak seguro",`${F(M.tp,2)} dBTP (overshoot de ${F(isp,2)} dB sobre o sample peak).`);
- a(Ls.s,"Loudness e dinâmica para "+g,`${F(M.lufs)} LUFS, PLR ${F(M.plr)} dB (típico de ${g}: ${F(gl.l[0])} a ${F(gl.l[1])} LUFS, PLR ≥ ${F(gl.p[0])} dB). ${Ls.t}`);
- if(wb>15)a("wa","Graves muito largos",`${F(wb,0)}% da energia abaixo de ~180 Hz está no canal lateral. Põe os graves em mono (utility ou filtro mid/side) para melhor translação em clubes e em mono.`);
- if(Number.isFinite(vp)&&Math.abs(vp)>3)a("wa",vp>0?"Zona vocal agressiva":"Voz possivelmente enterrada",`Os médios-agudos (2–4 kHz) estão ${sg(vp)} dB face ao alvo de ${g}. ${vp>0?"Dynamic EQ ou de-esser na voz e rever a saturação.":"Automatiza o nível da voz ou usa um bell largo em 2–4 kHz; verifica máscara com guitarras/sintes."} (estimativa sem separar a voz)`);
- if(M.lra<3)a("wa","Loudness range muito baixo",`LRA de ${F(M.lra)} LU: pouca variação entre secções. Se for intencional ignora; senão reduz a compressão no bus ou automatiza o nível.`);
- else if(M.lra>15)a("wa","Loudness range muito alto",`LRA de ${F(M.lra)} LU: grandes variações entre secções. Considera compressão suave no bus ou automação de nível.`);
- if(M.crest<8)a("wa","Dinâmica reduzida",`Crest factor de ${F(M.crest)} dB: sobrecompressão. Reduz o ratio/threshold no bus, attack mais lento ou compressão paralela.`);
- else a("ok","Dinâmica preservada",`Crest factor de ${F(M.crest)} dB.`);
- if(M.mono)a("wa","Sinal mono ou quase mono",`Largura de ${F(M.width)}%. Considera panning, reverbs estéreo e duplicação com micro-atrasos (graves sempre centrados).`);
- else if(M.corr<.3||M.neg>10||M.bc<.4)a("bad","Problemas de fase",`Correlação média ${F(M.corr,2)}, ${F(M.neg,0)}% das janelas de 400 ms negativas, graves a ${F(M.bc,2)}. Faz mono-check, centra tudo abaixo de ~120 Hz, verifica polaridade e atrasos entre camadas e modera o widening.`);
- else a("ok","Compatibilidade mono boa",`Correlação ${F(M.corr,2)}; largura ${F(M.width)}%.`);
- if(M.width>40)a("wa","Imagem muito larga",`Energia lateral de ${F(M.width)}%: verifica o colapso para mono.`);
- T.gr.forEach((x,i)=>{if(x.s!=="ok")a(x.s,`${x.n} ${x.d>0?"acima":"abaixo"} do alvo`,fl(GRC[i][x.d>0?0:1],{d:sg(x.d),g,f:fq(x.w)}))});
- if(T.gr.every(x=>x.s==="ok"))a("ok","Equilíbrio tonal dentro do alvo",`As 4 bandas estão dentro da tolerância do alvo de ${g}.`);
- return o}
-
-const INTRO=["VEREDITO DO TÉCNICO DE SERVIÇO, JÁ FARTO DA TUA CARA:","RELATÓRIO DE DANOS. SENTA-TE, CARALHO:","AUDITORIA CONCLUÍDA. OS MEUS MONITORES PEDIRAM BAIXA MÉDICA:"],OUTRO=["Resumo: corrige o que está acima, exporta de novo e depois pergunta-te porque é que fizeste música. Obrigado, não voltes.","Faz o bounce outra vez e não me chateies mais. A mix está medida; tu continuas por mixar.","Corrige isto e volta cá. Ou não. Já nem finjo que me importo, e o master bus também não."];
-function roast(M,gi){const T=tonal(M,gi),g=GN[gi][0],V={tp:F(M.tp,2),clip:M.clip,lufs:F(M.lufs),crest:F(M.crest),plr:F(M.plr),lra:F(M.lra),corr:F(M.corr,2),neg:F(M.neg,0),bcorr:F(M.bc,2),w:F(M.width),g,bpm:F(M.bpm,0),conf:M.conf,pmin:F(GL[gi].p[0]),runs:M.runs,room:F(loud(M,gi).room-.5,1)},sd=Math.abs(Math.round(M.lufs*7+M.tp*13+M.crest*3))%3,o=[],add=(c,s)=>{if(c)o.push(fl(s,V))};
- add(M.runs>=10,"{runs} sequências de amostras coladas a 0 dBFS, topos achatados como uma mesa de snooker. Puseste o limiter a gritar e ainda lhe deste mais ganho, caralho. Isto vai distorcer no encode para AAC e a culpa é toda do animal que exportou isto.");
- add(M.tp>-.3,"True peak a {tp} dBTP, colado ao 0. O ceiling em modo sample-peak não te protege de nada entre amostras, cabrão: o overshoot vai clipar no encode e tu a achares que estavas safo.");
- add(loud(M,gi).k==="floor","{lufs} LUFS com PLR de {plr} dB, quando o piso de {g} anda nos {pmin} dB. Empurraste o limiter até começar a vomitar distorção de intermodulação e chamas-lhe loudness. Mais volume não é mais música, imbecil.");
- add(loud(M,gi).s==="wa","{lufs} LUFS e PLR de {plr} dB: sobram {room} dB de margem até esmagares {g}. Estás a deixar loudness em cima da mesa por medo do limiter, medricas.");
- add(M.crest<8,"Crest factor de {crest} dB e PLR de {plr} dB: esmagaste os transientes até virarem pasta de dentes. O kick e a caixa fundiram-se numa massa cinzenta de transient smearing e ainda lhe chamas 'punch'.");
- add(M.lra<3,"LRA de {lra} LU. A dinâmica macro desta merda é a de um parquímetro: estrofe e refrão soam igual porque o bus está a comprimir tudo à pancada.");
- add(!M.mono&&(M.corr<.3||M.neg>10||M.bc<.4),"Correlação de {corr}, {neg}% das janelas fora de fase e graves a {bcorr}. Em mono isto sofre phase cancellation e o baixo vai buscar tabaco e não volta. Nunca testaste isto em mono, pois não, javardo?");
- add(M.mono,"Largura estéreo de {w}%. Isto é mono com pretensões: as pessoas pagaram duas colunas e tu deste-lhes um canal duplicado. O side está de baixa médica, foda-se.");
- add(M.width>40,"Largura de {w}% de energia lateral. Alargaste isto com um widener manhoso e em mono o refrão desaparece. Estéreo não é fazer pan a tudo, imbecil.");
- T.gr.forEach((x,i)=>{if(x.s!=="ok")o.push(fl(GRO[i][x.d>0?0:1],{...V,d:sg(x.d),f:fq(x.w)}))});
- add(T.gr.every(x=>x.s==="ok"),"Equilíbrio tonal dentro do alvo de {g}. Chateia-me dizê-lo, mas as frequências estão certas. É só o resto, a música, o gosto e a pessoa que a fez, que continua a ser um problema.");
- add(GI<0,"O algoritmo diz {g} a ≈{bpm} BPM ({conf}% de certeza). Se não era isso que querias fazer, a música ainda é pior do que eu pensava.");
- add(GI>=0,"Escolheste {g} à mão para me enganares. Não resultou, caralho.");
- return[INTRO[sd],...o,OUTRO[sd]]}
-
-function showRoast(M,gi){const el=$("#ro");el.innerHTML="";roast(M,gi).forEach((s,i)=>{const p=document.createElement("p");p.textContent=s;if(i==0)p.style.fontWeight="700";el.appendChild(p)})}
-const GL=[{l:[-10,-6.5],p:[7.5,10.5],r:[3,8]},{l:[-8.5,-5],p:[5.5,8.5],r:[2,6]},{l:[-9,-6],p:[6.5,9.5],r:[2,7]},{l:[-10,-6.5],p:[6.5,10],r:[4,9]},{l:[-18,-11],p:[11,18],r:[6,15]}];
-const sg=x=>(x>0?"+":"")+F(x),vpr=T=>avg(T.d.slice(6,8).filter(Number.isFinite)),mm=s=>Math.floor(s/60)+":"+String(Math.floor(s%60)).padStart(2,"0");
-const AU={playing:false,off:0},CV={};
-function prep(cv,h){const d=window.devicePixelRatio||1,w=cv.clientWidth||300;cv.width=w*d;cv.height=h*d;cv.style.height=h+"px";const x=cv.getContext("2d");x.setTransform(d,0,0,d,0,0);return[x,w]}
-function loud(M,gi){const g=GL[gi],room=M.plr-g.p[0],n=GN[gi][0];
- if(room<-.5)return{s:"bad",k:"floor",room,t:`O PLR (${F(M.plr)} dB) está abaixo do piso típico de ${n} (${F(g.p[0])} dB): o limiter está a esmagar e mais loudness vira distorção.`};
- if(M.runs>=10)return{s:"bad",k:"clip",room,t:`O PLR (${F(M.plr)} dB) está dentro do normal do género (piso ${F(g.p[0])} dB), mas há ${M.runs} sequências de 3 ou mais amostras seguidas a 0 dBFS: topos achatados, ou seja, clipping real.`};
- if(room>2&&M.lufs<g.l[1]){const to=Math.min(M.lufs+room-.5,g.l[1]);return{s:"wa",k:"room",room,t:`Ainda há margem: podes subir até ≈ ${F(to)} LUFS (+${F(to-M.lufs)} LU) sem sair do esmagamento normal do género.`}}
- return{s:"ok",k:"ok",room,t:"Loudness e dinâmica no ponto típico do género: bem empurrada sem esmagar."}}
-function scores(M,gi){const T=tonal(M,gi),g=GL[gi],Ls=loud(M,gi),cl=x=>Number.isFinite(x)?Math.max(0,Math.min(100,Math.round(x))):50,rd=(v,a)=>v<a[0]?a[0]-v:v>a[1]?v-a[1]:0,vp=vpr(T),rt=T.d.map((d,i)=>Math.abs(d)/TOL[i]).filter(Number.isFinite),bc=Number.isFinite(M.bc)?M.bc:1,ng=Number.isFinite(M.neg)?M.neg:0,vc=Number.isFinite(M.vc)?M.vc:1,ck=M.runs>=10;
- let ld=100-10*Math.max(0,g.l[0]-M.lufs)-14*Math.max(0,M.lufs-g.l[1]);if(Ls.s==="bad")ld=Math.min(ld,45);else if(Ls.s==="wa")ld=Math.min(ld,79);
- return[["Tonal",cl(100-30*avg(rt))],["Voz",cl(100-9*Math.max(0,Math.abs(Number.isFinite(vp)?vp:0)-2)-120*Math.max(0,.7-vc))],["Dinâmica",cl(100-9*rd(M.plr,g.p)-(Number.isFinite(M.lra)?6*rd(M.lra,g.r):0)-(ck?25:0))],["Loudness",cl(ld)],["Estéreo",cl(100-1.5*Math.max(0,ng-5)-50*Math.max(0,.5-bc)-3*Math.max(0,4-M.width)-1.2*Math.max(0,M.width-40)-(M.mono?30:0))],["Headroom",cl(100-(M.tp>0?60:M.tp>-.3?30:0)-(ck?25:0)-Math.min(20,M.near*2))]]}
-
-const cur=()=>AU.playing?Math.min(REP.dur,AU.off+(AU.ctx.currentTime-AU.t0)):AU.off;
-function stopP(reset){if(AU.s){try{AU.s.onended=null;AU.s.stop()}catch(e){}try{AU.s.disconnect()}catch(e){}AU.s=null}AU.playing=false;if(AU.raf)cancelAnimationFrame(AU.raf);if(reset)AU.off=0;const b=$("#pp");if(b)b.textContent="▶ Reproduzir"}
-function playP(off){stopP();const M=REP;if(!M||!M.buf)return;try{const c=AU.ctx||(AU.ctx=new(window.AudioContext||window.webkitAudioContext)());if(c.state==="suspended")c.resume();
- const s=c.createBufferSource(),sp=c.createChannelSplitter(2),a=c.createAnalyser(),aL=c.createAnalyser(),aR=c.createAnalyser();s.buffer=M.buf;a.fftSize=16384;a.smoothingTimeConstant=.75;aL.fftSize=2048;aR.fftSize=2048;
- s.connect(c.destination);s.connect(a);s.connect(sp);sp.connect(aL,0);sp.connect(aR,1);Object.assign(AU,{an:a,aL,aR,L:new Float32Array(2048),R:new Float32Array(2048),fb:null,live:null,t0:c.currentTime,off,s});
- s.start(0,off);AU.playing=true;$("#pp").textContent="❚❚ Pausar";loop()}catch(e){AU.playing=false;fail("não foi possível reproduzir o áudio.")}}
-function loop(){if(!AU.playing)return;if(cur()>=REP.dur-.03){stopP(true);draw();return}draw();AU.raf=requestAnimationFrame(loop)}
-function seek(t){t=Math.max(0,Math.min(REP.dur-.05,t));if(AU.playing)playP(t);else{AU.off=t;draw()}}
-
-function liveSpec(){const a=AU.an;if(!a)return;const n=a.frequencyBinCount,d=AU.fb||(AU.fb=new Float32Array(n));a.getFloatFrequencyData(d);const bw=AU.ctx.sampleRate/a.fftSize,s=OF.map(()=>0);let vt=0,vv=0;
- for(let k=1;k<n;k++){const f=k*bw,p=Math.pow(10,d[k]/10);vt+=p;if(f>=300&&f<3400)vv+=p;for(let i=0;i<10;i++)if(f>=OF[i]/Math.SQRT2&&f<OF[i]*Math.SQRT2){s[i]+=p;break}}
- const ref=s.slice(3,8).reduce((x,v)=>x+v,0);AU.live=ref>1e-20?s.map(v=>v>0?pdb(v)-pdb(ref):NaN):null;const vf=vt>0?vv/vt:NaN;$("#b4").style.width=(Number.isFinite(vf)?vf*100:0)+"%";$("#v4").textContent=F(vf*100,0," %")}
-function liveSt(){const a=AU.aL,b=AU.aR;if(!a)return;a.getFloatTimeDomainData(AU.L);b.getFloatTimeDomainData(AU.R);let ll=0,rr=0,lr=0;for(let i=0;i<2048;i++){const l=AU.L[i],r=AU.R[i];ll+=l*l;rr+=r*r;lr+=l*r}
- const c=ll*rr>1e-12?lr/Math.sqrt(ll*rr):NaN,sd=(ll+rr-2*lr)/4,md=(ll+rr+2*lr)/4,w=md+sd>1e-12?sd/(md+sd)*100:NaN;$("#kc").style.left=(Number.isFinite(c)?(c+1)/2*100:50)+"%";$("#kv").textContent=F(c,2);$("#kw").textContent=F(w,0," %")}
-function meters(t){const M=REP,pc=v=>Number.isFinite(v)?Math.max(0,Math.min(100,(v+40)/40*100)):0,at=(a,k)=>{const i=Math.floor(t*10)-k;return i<0||!a.length?NaN:a[Math.min(i,a.length-1)]},tb=at(M.tpb,0),vals=[at(M.mom,3),at(M.stl,29),at(M.run,3),Number.isFinite(tb)?dB(tb):NaN];
- vals.forEach((v,i)=>{$("#b"+i).style.width=pc(v)+"%";$("#v"+i).textContent=F(v,1,i==3?" dBTP":" LUFS")})}
-function draw(){const M=REP;if(!M||!CV.tl)return;const t=cur();$("#tt").textContent=`${mm(t)} / ${mm(M.dur)}`;meters(t);if(AU.playing){liveSpec();liveSt()}drawTL(t);drawSpec();drawGonio()}
-
-function drawTL(t){const c=CV.tl,M=REP;if(!c)return;const{x,w,h}=c,P=34,W=w-P-6,lo=-40,Y=v=>h-16-(Math.max(lo,Math.min(0,v))-lo)/(-lo)*(h-30),px=P+Math.min(1,t/M.dur)*W;
- x.clearRect(0,0,w,h);x.font="10px ui-monospace,monospace";x.lineWidth=1;x.textAlign="left";
- for(let v=lo;v<=0;v+=10){x.strokeStyle="#1c242e";x.beginPath();x.moveTo(P,Y(v));x.lineTo(w,Y(v));x.stroke();x.fillStyle="#8a95a3";x.fillText(v,2,Y(v)+3)}
- const wf=M.wf,n=wf.length,cw=W/n;x.lineWidth=cw+.4;for(let i=0;i<n;i++){const X=P+(i+.5)*cw,a=wf[i]*(h-30)/2;x.strokeStyle=X<px?"rgba(63,184,175,.5)":"rgba(138,149,163,.3)";x.beginPath();x.moveTo(X,h/2-a);x.lineTo(X,h/2+a);x.stroke()}
- const ln=(a,k,col,lw)=>{if(!a.length)return;const st=Math.max(1,Math.floor(a.length/W));x.strokeStyle=col;x.lineWidth=lw;x.beginPath();let f=1;for(let j=0;j<a.length;j+=st){const X=P+Math.min(1,(j+k)*.1/M.dur)*W;if(f){x.moveTo(X,Y(a[j]));f=0}else x.lineTo(X,Y(a[j]))}x.stroke()};
- ln(M.mom,4,"rgba(213,219,227,.45)",1);ln(M.stl,30,"#e3b341",2);ln(M.run,4,"#8ab4ff",1.5);
- x.strokeStyle="#fff";x.lineWidth=1.5;x.beginPath();x.moveTo(px,4);x.lineTo(px,h-14);x.stroke();
- [["● Momentary","rgba(213,219,227,.8)"],["● Short-term","#e3b341"],["● Integrado","#8ab4ff"]].forEach(([s,col],i,A)=>{x.fillStyle=col;x.fillText(s,P+8+A.slice(0,i).reduce((a,b)=>a+x.measureText(b[0]).width+16,0),12)});
- x.fillStyle="#8a95a3";x.textAlign="right";x.fillText(mm(M.dur),w-4,h-3)}
-function drawSpec(){const c=CV.cs,M=REP;if(!c)return;const{x,w,h}=c,gi=GI<0?M.gi:GI,T=tonal(M,gi),P=30,lo=-40,hi=6,Y=v=>h-18-(Math.max(lo,Math.min(hi,v))-lo)/(hi-lo)*(h-26),bw=(w-P-4)/10,vals=AU.playing&&AU.live?AU.live:M.oc.map(o=>o.n);
- x.clearRect(0,0,w,h);x.font="10px ui-monospace,monospace";x.lineWidth=1;
- for(let v=lo;v<=hi;v+=10){x.strokeStyle="#1c242e";x.beginPath();x.moveTo(P,Y(v));x.lineTo(w,Y(v));x.stroke();x.fillStyle="#8a95a3";x.textAlign="left";x.fillText(v,2,Y(v)+3)}
- OF.forEach((f,i)=>{const x0=P+i*bw+4,bd=bw-8,v=vals[i];x.fillStyle="rgba(76,195,138,.2)";x.fillRect(x0-2,Y(T.tg[i]+TOL[i]),bd+4,Y(T.tg[i]-TOL[i])-Y(T.tg[i]+TOL[i]));
-  if(Number.isFinite(v)){const e=Math.abs(v-T.tg[i]);x.fillStyle=e<=TOL[i]?"#3fb8af":e<=TOL[i]*1.5?"#e3b341":"#f0605d";x.fillRect(x0,Y(v),bd,Y(lo)-Y(v))}
-  if(AU.playing&&Number.isFinite(M.oc[i].n)){x.fillStyle="#fff";x.fillRect(x0-2,Y(M.oc[i].n)-1,bd+4,2)}
-  x.fillStyle="#8a95a3";x.textAlign="center";x.fillText(f>=1000?f/1000+"k":f,x0+bd/2,h-4)})}
-function drawGonio(){const c=CV.cg;if(!c)return;const{x,w,h}=c,cx=w/2,cy=h/2,r=Math.min(w,h)/2-10;x.clearRect(0,0,w,h);x.strokeStyle="#27303b";x.lineWidth=1;x.beginPath();x.arc(cx,cy,r,0,7);x.moveTo(cx-r,cy);x.lineTo(cx+r,cy);x.moveTo(cx,cy-r);x.lineTo(cx,cy+r);x.moveTo(cx-r*.7,cy+r*.7);x.lineTo(cx+r*.7,cy-r*.7);x.moveTo(cx-r*.7,cy-r*.7);x.lineTo(cx+r*.7,cy+r*.7);x.stroke();
- x.fillStyle="#8a95a3";x.font="10px ui-monospace,monospace";x.textAlign="center";x.fillText("M",cx,cy-r-1);x.fillText("S",cx+r+1,cy+3);
- if(AU.playing&&AU.L){x.fillStyle="rgba(63,184,175,.6)";for(let i=0;i<2048;i++){const l=AU.L[i],q=AU.R[i],X=cx+(q-l)*.7071*r*1.2,Yy=cy-(l+q)*.7071*r*1.2;if(Math.hypot(X-cx,Yy-cy)<r)x.fillRect(X,Yy,1.6,1.6)}}}
-function drawRadar(){const c=CV.cr,S=AU.S;if(!c||!S)return;const{x,w,h}=c,cx=w/2,cy=h/2+4,r=Math.min(w/2-80,h/2-34),n=S.length,pt=(i,v)=>{const a=-Math.PI/2+i*2*Math.PI/n;return[cx+Math.cos(a)*r*v/100,cy+Math.sin(a)*r*v/100,a]};x.clearRect(0,0,w,h);x.font="11px system-ui,sans-serif";x.lineWidth=1;
- for(const k of[25,50,75,100]){x.strokeStyle="#27303b";x.beginPath();S.forEach((_,i)=>{const[a,b]=pt(i,k);i?x.lineTo(a,b):x.moveTo(a,b)});x.closePath();x.stroke()}
- x.fillStyle="rgba(63,184,175,.25)";x.strokeStyle="#3fb8af";x.lineWidth=2;x.beginPath();S.forEach(([l,v],i)=>{const[a,b]=pt(i,v);i?x.lineTo(a,b):x.moveTo(a,b)});x.closePath();x.fill();x.stroke();
- S.forEach(([l,v],i)=>{const[a,b,an]=pt(i,v),[lx,ly]=pt(i,118);x.fillStyle=v>=75?"#4cc38a":v>=50?"#e3b341":"#f0605d";x.beginPath();x.arc(a,b,4,0,7);x.fill();x.fillStyle="#d5dbe3";x.textAlign=Math.cos(an)>.3?"left":Math.cos(an)<-.3?"right":"center";const tx=`${l} ${v}`,tw=x.measureText(tx).width,al=x.textAlign;x.fillText(tx,al==="left"?Math.min(lx,w-tw-4):al==="right"?Math.max(lx,tw+4):Math.max(tw/2+4,Math.min(lx,w-tw/2-4)),Math.max(12,Math.min(h-6,ly+4)))})}
-function initCv(){["tl","cs","cg","cr"].forEach(id=>{const c=$("#"+id);if(c){const[x,w]=prep(c,+c.dataset.h);CV[id]={x,w,h:+c.dataset.h}}})}
-function relayout(){initCv();drawRadar();draw()}
-
-const ring=s=>`<div class="rg" style="background:conic-gradient(${s>=75?"var(--ok)":s>=50?"var(--wa)":"var(--bad)"} ${s*3.6}deg,#1d2630 0)"><span class="m">${s}</span></div>`;
-const gz=(v,lo,hi,mn,mx)=>`<div class="gz"><b style="left:${(lo-mn)/(mx-mn)*100}%;width:${(hi-lo)/(mx-mn)*100}%"></b><i style="left:${Number.isFinite(v)?Math.max(0,Math.min(100,(v-mn)/(mx-mn)*100)):0}%"></i></div>`;
-const gr_=(l,v,lo,hi,mn,mx,u)=>`<div class="mr"><span>${l}</span>${gz(v,lo,hi,mn,mx)}<span class="m">${F(v,1,u)}</span></div>`;
-const mrow=(l,i)=>`<div class="mr"><span>${l}</span><div class="mb"><i id="b${i}"></i></div><span class="m" id="v${i}">—</span></div>`;
-const ct=(l,v,c,e)=>`<div class="c ${c||""}"><small>${l}</small><strong class="m">${v}</strong>${e?`<em class="m">${e}</em>`:""}</div>`;
-const hd=(S,h,p)=>`<div class="ch">${ring(S)}<div><h2>${h}</h2><p>${p}</p></div></div>`;
-function render(){const M=REP,gi=GI<0?M.gi:GI,g=GN[gi][0],gl=GL[gi],T=tonal(M,gi),S=scores(M,gi),Ls=loud(M,gi),vp=vpr(T),ov=Math.round(avg(S.map(s=>s[1]))),isp=M.tp-M.sp;AU.S=S;
- const bad=T.gr.filter(x=>x.s!=="ok"),
- vT=bad.length?"Fora do alvo: "+bad.map(x=>`${x.n} ${sg(x.d)} dB`).join(" · "):"Dentro do alvo de "+g+".",
- vS=M.mono?"Praticamente mono.":M.corr<.3||M.neg>10||M.bc<.4?"Risco de cancelamento de fase em mono.":"Imagem estável e compatível com mono.",
- vV=Number.isFinite(vp)?(Math.abs(vp)<=3?"Zona vocal equilibrada (estimativa).":vp>0?"Médios-agudos à frente: voz agressiva.":"Voz possivelmente encoberta."):"Sem dados suficientes.",
- lb=OF.map(f=>f>=1000?f/1000+"k":f),
- wbars=M.ws.map((v,i)=>`<div class="wb"><i style="height:${Math.min(100,(Number.isFinite(v)?v:0)*2)}%;${i<3&&v>15?"background:var(--bad)":""}"></i><small>${lb[i]}</small></div>`).join("");
- $("#rp").innerHTML=`<section class="pn"><div class="hd"><div><b id="fn"></b><span class="m" id="fm"></span></div><label class="m">Género <select id="gs"><option value="-1">Automático · ${GN[M.gi][0]} (${M.conf}%)</option>${GN.map((x,i)=>`<option value="${i}"${i==GI?" selected":""}>${x[0]}</option>`).join("")}</select></label></div>
- <div class="pl"><button class="a" id="pp">▶ Reproduzir</button><span class="m" id="tt"></span><span class="m" style="color:var(--mu);font-size:12px">clica na onda para saltar</span></div>
- <canvas id="tl" data-h="190" style="cursor:pointer"></canvas><div class="g2" style="margin-top:12px">${mrow("Momentary",0)}${mrow("Short-term",1)}${mrow("Integrado",2)}${mrow("True peak",3)}</div></section>
- <div class="gd">
- <section class="pn">${hd(ov,"Saúde da mix",(ov>=80?"Boa forma":ov>=60?"Quase lá":"A precisar de trabalho")+" · "+g)}<canvas id="cr" data-h="250"></canvas></section>
- <section class="pn">${hd(S[0][1],"Tonal balance",vT)}<canvas id="cs" data-h="220"></canvas><p class="nt m">Barras: ao vivo (média da música em pausa) · faixa verde: alvo do género · traço branco: média da música</p><div class="g" style="margin-top:10px">${T.gr.map(x=>ct(x.n,Number.isFinite(x.d)?sg(x.d)+" dB":"—",x.s,x.r)).join("")}</div></section>
- <section class="pn">${hd(S[4][1],"Largura estéreo",vS)}<div class="g2" style="grid-template-columns:1fr 1fr;gap:12px"><canvas id="cg" data-h="170"></canvas><div><div class="mr" style="grid-template-columns:1fr"><span>Correlação ao vivo (−1 · 0 · +1)</span><div class="gz"><b style="left:50%;width:50%"></b><i id="kc" style="left:50%"></i></div><span class="m" id="kv">—</span></div><div class="mr" style="grid-template-columns:1fr auto"><span>Energia lateral ao vivo</span><span class="m" id="kw">—</span></div><div class="mr" style="grid-template-columns:1fr auto"><span>Média da música</span><span class="m">${F(M.width,0," %")}</span></div></div></div>
- <p class="nt m" style="margin-bottom:4px">Energia lateral por oitava (vermelho = graves com demasiado lado)</p><div class="wr">${wbars}</div></section>
- <section class="pn">${hd(Math.min(S[2][1],S[3][1]),"Dinâmica e loudness",Ls.t)}${gr_("Loudness",M.lufs,gl.l[0],gl.l[1],-24,0," LUFS")}${gr_("PLR",M.plr,gl.p[0],gl.p[1],0,20," dB")}${gr_("LRA",M.lra,gl.r[0],gl.r[1],0,20," LU")}<p class="nt m">Zona verde = faixa típica de ${g} (aproximada, de masters comerciais). A avaliação é pelo género, não por plataformas de streaming.</p><p class="nt m">Sample peak ${F(M.sp,2)} dBFS · true peak ${F(M.tp,2)} dBTP · overshoot entre amostras ${F(isp,2)} dB</p></section>
- <section class="pn">${hd(S[1][1],"Vocal balance",vV)}<div class="mr"><span>Presença 2–4 kHz</span>${gz(vp,-3,3,-12,12)}<span class="m">${F(vp,1," dB")}</span></div><div class="mr"><span>Voz centrada</span>${gz(Number.isFinite(M.vc)?M.vc*100:NaN,70,100,0,100)}<span class="m">${F(M.vc*100,0," %")}</span></div>${mrow("Zona vocal ao vivo",4)}<p class="nt m">Estimativa sem separar a voz: mede o centro do estéreo e a presença nos médios-agudos face ao alvo do género. Para valores exatos usa a stem vocal.</p></section>
- </div>
- <details class="pn"><summary>Detalhes técnicos</summary><div class="g">${[ct("Integrated",F(M.lufs,1," LUFS")),ct("Momentary máx",F(M.momMax,1," LUFS")),ct("Short-term máx",F(M.stMax,1," LUFS")),ct("Loudness range",F(M.lra,1," LU")),ct("True peak",F(M.tp,2," dBTP"),M.tp>0?"bad":M.tp>-.3?"wa":""),ct("Sample peak",F(M.sp,2," dBFS"),M.sp>-.05?"bad":""),ct("PLR",F(M.plr,1," dB")),ct("PSR",F(M.psr,1," dB")),ct("Crest factor",F(M.crest,1," dB"),M.crest<8?"wa":""),ct("Correlação média",M.mono?"mono":F(M.corr,2)),ct("Correlação graves",F(M.bc,2),M.bc<.4?"wa":""),ct("Topos achatados",M.runs+" seq.",M.runs>=10?"bad":""),ct("Janelas fora de fase",F(M.neg,0," %"),M.neg>10?"wa":""),ct("Balanço L/R",F(M.bal,1," dB")),ct("Centroide",F(M.cent,0," Hz")),ct("Tempo",F(M.bpm,0," BPM"))].join("")}</div></details>
- <section class="pn"><h2>Recomendações</h2>${recs(M,gi).map(r=>`<div class="rc ${r.s}"><b>${r.t}</b>${r.x}</div>`).join("")}</section>
- <section class="pn vd"><h2>Veredito</h2><div id="ro"></div><p style="margin-bottom:0"><button class="a" id="cp">Copiar relatório completo</button> <span id="cm" class="m" style="color:var(--ok);font-size:12px"></span></p></section>`;
- $("#fn").textContent=M.name;$("#fm").textContent=`${F(M.dur,1)} s · ${M.fs} Hz · ${M.nc===1?"mono":M.nc===2?"estéreo":M.nc+" canais (2 analisados)"}`;
- $("#gs").onchange=()=>{GI=+$("#gs").value;render()};$("#cp").onclick=copyRep;showRoast(M,gi);
- $("#pp").onclick=()=>{if(AU.playing){const t=cur();stopP();AU.off=t;draw()}else playP(AU.off>=M.dur-.05?0:AU.off)};
- $("#tl").onclick=e=>{const r=e.currentTarget.getBoundingClientRect();seek((e.clientX-r.left-34)/(r.width-40)*M.dur)};
- $("#rp").style.display="block";$("#pg").style.display="none";$("#dz").classList.add("sm");initCv();drawRadar();draw();
- if(!M.shown){M.shown=1;$("#rp").scrollIntoView({behavior:"smooth"})}}
-async function copyRep(){const M=REP,gi=GI<0?M.gi:GI,T=tonal(M,gi),t=["LABORATÓRIO ACÚSTICO & AUDITORIA DE MIXAGEM",`Ficheiro: ${M.name} · ${F(M.dur,1)} s · ${M.fs} Hz · ${M.nc} canal(is)`,`Género: ${GN[gi][0]}${GI<0?` (detetado, ${M.conf}% de confiança)`:" (manual)"} · ≈${F(M.bpm,0)} BPM`,"",
- "1. DIAGNÓSTICO TÉCNICO",`Integrated ${F(M.lufs)} LUFS | Momentary máx ${F(M.momMax)} | Short-term máx ${F(M.stMax)} | LRA ${F(M.lra)} LU | True peak ${F(M.tp,2)} dBTP | PLR ${F(M.plr)} dB | PSR ${F(M.psr)} dB`,
- `Crest ${F(M.crest)} dB | Correlação ${F(M.corr,2)} | Fora de fase ${F(M.neg,0)}% | Largura ${F(M.width)}% | Centroide ${F(M.cent,0)} Hz`,
- "Equilíbrio tonal vs alvo: "+T.gr.map(g=>`${g.n} ${Number.isFinite(g.d)?sg(g.d):"—"} dB`).join(" | "),"",...recs(M,gi).map(r=>`- ${r.t}: ${r.x}`),"","2. VEREDITO",...roast(M,gi)].join("\n");
- let ok=false;try{await navigator.clipboard.writeText(t);ok=true}catch(e){try{const a=document.createElement("textarea");a.value=t;document.body.appendChild(a);a.select();ok=document.execCommand("copy");a.remove()}catch(e2){}}
- $("#cm").textContent=ok?"Copiado.":"Não foi possível copiar.";setTimeout(()=>{const c=$("#cm");if(c)c.textContent=""},2500)}
-if(window.matchMedia)window.matchMedia("print").addEventListener("change",()=>{if(REP&&$("#tl"))relayout()});
-const dz=$("#dz"),fi=$("#fi");
-dz.onclick=()=>fi.click();dz.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();fi.click()}};
-window.addEventListener("resize",()=>{if(REP&&$("#tl"))relayout()});
-fi.onchange=()=>{if(fi.files[0])analyse(fi.files[0]);fi.value=""};
-["dragenter","dragover"].forEach(v=>dz.addEventListener(v,e=>{e.preventDefault();dz.classList.add("on")}));
-["dragleave","drop"].forEach(v=>dz.addEventListener(v,e=>{e.preventDefault();dz.classList.remove("on")}));
-dz.addEventListener("drop",e=>{const f=e.dataTransfer&&e.dataTransfer.files[0];if(f)analyse(f)});
-</script>
-</body>
-</html>
+  let bpm0=NaN,bstr=0;if(r0>0)for(let l=Math.max(2,Math.round(fps*60/
